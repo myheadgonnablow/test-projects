@@ -7,14 +7,15 @@ const API = {
 
 let planetsAndSpecies = [];
 let failed = false;
-const promise = fetch(API.PLANETS_URL)
-    .then(response => response.json())
+fetchMore({
+        next: API.PLANETS_URL
+    }, [])
+    .then(jsons => reduceChildren(jsons, `results`))
     .catch(err => {
         failed = true;
         console.log(err);
         throw new Error(`Network issues. Can't load planet list.`);
-    }).then(json => json.results)
-    .then(planets => {
+    }).then(planets => {
         planetsAndSpecies = planets.map(planet => {
             return {
                 planet: planet.name,
@@ -55,7 +56,7 @@ const promise = fetch(API.PLANETS_URL)
 
         if (failedResults.length) {
             failed = true;
-            throw new Error(`No possibility to load species.`);  
+            throw new Error(`No possibility to load species.`);
         }
         return Promise.all(results.map(result => result.json()));
     }).then(species => {
@@ -70,6 +71,17 @@ const promise = fetch(API.PLANETS_URL)
         }
         console.table(planetsAndSpecies);
     }).catch(err => console.log(err));
+
+function fetchMore(json, jsons) {
+    if (json.next) {
+        return fetch(json.next).then(response => response.json()).then(json => {
+            jsons.push(json);
+            return fetchMore(json, jsons);
+        });
+    }
+
+    return jsons;
+}
 
 function removeDuplicates(array) {
     return Array.from(new Set(array));
