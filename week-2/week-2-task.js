@@ -8,21 +8,21 @@ const API = {
 const HTTP_STATUS_CODES = {
     OK: 200,
 };
- 
+
 logPlanetsAndSpecies(API.PLANETS_URL);
 
-async function getPlanetsAndSpecies(planetsUrl){
+async function getPlanetsAndSpecies(planetsUrl) {
     const planetsResidentsSpecies = await fetchPlanetsResidentsSpecies(planetsUrl);
     return transformToPlanetsAndSpecies(...planetsResidentsSpecies);
 }
 
-async function fetchPlanetsResidentsSpecies(planetsUrl){
+async function fetchPlanetsResidentsSpecies(planetsUrl) {
     const planetJsons = await fetchMore({
         next: planetsUrl
     }, []);
 
     const planets = reduceChildren(planetJsons, `results`);
-           
+
     const residentResponses = await Promise.all(getFetchChildrenPromises(planets, `residents`));
     logFailedResidents(residentResponses);
     const residents = await Promise.all(residentResponses.map(response => response.json()));
@@ -32,33 +32,31 @@ async function fetchPlanetsResidentsSpecies(planetsUrl){
     if (failedSpecies.length) {
         throw new Error(`No possibility to load species.`);
     }
-    
+
     const species = await Promise.all(speciesResponses.map(result => result.json()));
 
     return [planets, residents, species];
 }
 
 function transformToPlanetsAndSpecies(planets, residents, species) {
-    let planetInfos = planets.map(planet => {
+    return planets.map(planet => {
+
+        const uniqueJointSpecies = getUniqueArray(
+            planet.residents.map(residentUrl => leftJoinByUrl(residentUrl, residents).species.map(
+                speciesUrl => leftJoinByUrl(speciesUrl, species).name)).flat()).join(RECORD_SEPARATOR);
         return {
             planet: planet.name,
-            residents: planet.residents
+            species: uniqueJointSpecies,
         };
-    }).map(planetInfo => {
-        return {
-            planet: planetInfo.planet,
-            residents: planetInfo.residents.map(resident => residents.find(x => x.url === resident))
-        };
+
     });
-    for (let planetInfo of planetInfos) {
-        planetInfo.species = reduceChildren(planetInfo.residents, `species`)
-            .map(speciesItem => species.find(x => x.url === speciesItem).name)
-            .join(RECORD_SEPARATOR);
-        delete planetInfo.residents;
-    }
-    return planetInfos;
 }
 
+function leftJoinByUrl(entityUrl, entities) {
+    return entities.find(x => x.url === entityUrl);
+}
+
+// it's not obvious from it's name that this one throws an exception
 function logFailedResidents(residentResponses) {
     const failedResidents = residentResponses.filter(isFailed);
     if (failedResidents.length) {
@@ -70,7 +68,7 @@ function logFailedResidents(residentResponses) {
     }
 }
 
-async function logPlanetsAndSpecies(planetsUrl){
+async function logPlanetsAndSpecies(planetsUrl) {
     try {
         const planetsAndSpecies = await getPlanetsAndSpecies(planetsUrl);
         console.table(planetsAndSpecies);
@@ -79,7 +77,7 @@ async function logPlanetsAndSpecies(planetsUrl){
     }
 }
 
-function isFailed(response){
+function isFailed(response) {
     return response.status !== HTTP_STATUS_CODES.OK;
 }
 
@@ -94,12 +92,12 @@ function fetchMore(json, jsons) {
     return jsons;
 }
 
-function removeDuplicates(array) {
+function getUniqueArray(array) {
     return Array.from(new Set(array));
 }
 
 function reduceChildren(parents, childPropName) {
-    return removeDuplicates(parents.reduce((accumulator, parentItem) =>
+    return getUniqueArray(parents.reduce((accumulator, parentItem) =>
         accumulator.concat(parentItem[childPropName]), []));
 }
 
