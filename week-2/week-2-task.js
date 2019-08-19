@@ -11,31 +11,55 @@ const HTTP_STATUS_CODES = {
 
 logPlanetsAndSpecies(API.PLANETS_URL);
 
+async function logPlanetsAndSpecies(planetsUrl) {
+    try {
+        const planetsAndSpecies = await getPlanetsAndSpecies(planetsUrl);
+        console.table(planetsAndSpecies);
+    } catch (err) {
+        console.log(err);
+    }
+}
+
 async function getPlanetsAndSpecies(planetsUrl) {
     const planetsResidentsSpecies = await fetchPlanetsResidentsSpecies(planetsUrl);
     return transformToPlanetsAndSpecies(...planetsResidentsSpecies);
 }
 
 async function fetchPlanetsResidentsSpecies(planetsUrl) {
-    const planetJsons = await fetchMore({
-        next: planetsUrl
-    }, []);
+    const planets = await fetchPagedEntities(planetsUrl);
+    const residentResponses = await Promise.all(getPromisesToFetchSubEntities(planets, `residents`));
 
-    const planets = reduceChildren(planetJsons, `results`);
+    processFailedResidents(residentResponses);
 
-    const residentResponses = await Promise.all(getFetchChildrenPromises(planets, `residents`));
-    logFailedResidents(residentResponses);
     const residents = await Promise.all(residentResponses.map(response => response.json()));
-    const speciesResponses = await Promise.all(getFetchChildrenPromises(residents, `species`));
-    const failedSpecies = speciesResponses.filter(x => !x.ok);
+    const speciesResponses = await Promise.all(getPromisesToFetchSubEntities(residents, `species`));
 
-    if (failedSpecies.length) {
-        throw new Error(`No possibility to load species.`);
-    }
+    processFailedSpecies(speciesResponses);
 
     const species = await Promise.all(speciesResponses.map(result => result.json()));
 
     return [planets, residents, species];
+}
+
+async function fetchPagedEntities(url) {
+    let entities = [];
+    let currentUrl = url;
+
+    do {
+        const response = await fetch(currentUrl);
+        const json = await response.json();
+        entities = entities.concat(json.results);
+        currentUrl = json.next;
+    } while (currentUrl !== null);
+
+    return entities;
+}
+
+function processFailedSpecies(speciesResponses) {
+    const failedSpecies = speciesResponses.filter(x => !x.ok);
+    if (failedSpecies.length) {
+        throw new Error(`No possibility to load species.`);
+    }
 }
 
 function transformToPlanetsAndSpecies(planets, residents, species) {
@@ -56,8 +80,7 @@ function leftJoinByUrl(entityUrl, entities) {
     return entities.find(x => x.url === entityUrl);
 }
 
-// it's not obvious from it's name that this one throws an exception
-function logFailedResidents(residentResponses) {
+function processFailedResidents(residentResponses) {
     const failedResidents = residentResponses.filter(isFailed);
     if (failedResidents.length) {
         console.log(`'${failedResidents.join(RECORD_SEPARATOR)}' failed to load.`);
@@ -68,39 +91,19 @@ function logFailedResidents(residentResponses) {
     }
 }
 
-async function logPlanetsAndSpecies(planetsUrl) {
-    try {
-        const planetsAndSpecies = await getPlanetsAndSpecies(planetsUrl);
-        console.table(planetsAndSpecies);
-    } catch (err) {
-        console.log(err);
-    }
-}
-
 function isFailed(response) {
     return response.status !== HTTP_STATUS_CODES.OK;
-}
-
-function fetchMore(json, jsons) {
-    if (json.next) {
-        return fetch(json.next).then(response => response.json()).then(json => {
-            jsons.push(json);
-            return fetchMore(json, jsons);
-        });
-    }
-
-    return jsons;
 }
 
 function getUniqueArray(array) {
     return Array.from(new Set(array));
 }
 
-function reduceChildren(parents, childPropName) {
-    return getUniqueArray(parents.reduce((accumulator, parentItem) =>
-        accumulator.concat(parentItem[childPropName]), []));
+function getJointUniqueSubEntitiesArray(entities, subEntitiesPropName) {
+    return getUniqueArray(entities.reduce((accumulator, entity) =>
+        accumulator.concat(entity[subEntitiesPropName]), []));
 }
 
-function getFetchChildrenPromises(parents, childPropName) {
-    return reduceChildren(parents, childPropName).map(childUrl => fetch(childUrl));
+function getPromisesToFetchSubEntities(entities, subEntitiesPropName) {
+    return getJointUniqueSubEntitiesArray(entities, subEntitiesPropName).map(url => fetch(url));
 }
