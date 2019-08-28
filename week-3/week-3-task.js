@@ -1,6 +1,9 @@
 'use strict';
+const APP_CONTAINER_ID = 'app';
+
 function createElements() {
-    const app = new App(document.getElementById('app'), document);
+    const appContainer = document.getElementById(APP_CONTAINER_ID);
+    const app = new App(appContainer);
     let children = [app.createTextElement('Child 1'),
         app.createTextElement('Child 2'),
         app.createTextElement('Child 3'),

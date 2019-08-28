@@ -1,9 +1,11 @@
 'use strict';
 
-function App(appElement, document) {
+function App(appContainer) {
     if (!new.target) {
-        return new App(appElement);
+        return new App(appContainer);
     }
+
+    const document = appContainer.ownerDocument;
 
     return {
         createElement(tagName, attributes = {}, children = []) {
@@ -25,7 +27,7 @@ function App(appElement, document) {
         createTextElement(text) {
             return document.createTextNode(text);
         },
-        mountElement(element, parentNode = appElement) {
+        mountElement(element, parentNode = appContainer) {
             return parentNode.appendChild(element);
         },
     };
